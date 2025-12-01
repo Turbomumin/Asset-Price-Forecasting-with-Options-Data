@@ -1,0 +1,130 @@
+import yfinance as yf
+import pandas as pd
+
+def fetch_option_chain(symbol):
+    """Fetch full option chain for all expiries for one symbol."""
+    ticker = yf.Ticker(symbol)
+    expiries = ticker.options
+
+    all_chains = []
+
+    for exp in expiries:
+        try:
+            chain = ticker.option_chain(exp)
+        except Exception as e:
+            print(f"Failed to load expiry {exp}: {e}")
+            continue
+
+        calls = chain.calls.copy()
+        puts = chain.puts.copy()
+
+        # Attach expiry as datetime
+        calls["expiry"] = pd.to_datetime(exp)
+        puts["expiry"] = pd.to_datetime(exp)
+
+        # Mark option type
+        calls["option_type"] = "C"
+        puts["option_type"] = "P"
+
+        all_chains.append(calls)
+        all_chains.append(puts)
+
+    if not all_chains:
+        raise ValueError("No option chains loaded")
+
+    options_df = pd.concat(all_chains, ignore_index=True)
+
+    # Days to expiry
+    today = pd.Timestamp.today().normalize()
+    options_df["days_to_expiry"] = (options_df["expiry"] - today).dt.days
+
+    # Remove unnecessary columns
+
+    cols_to_drop = [
+        "contractSize",
+        "currency",
+        "percentChange",
+        "change",
+        "lastTradeDate"
+    ]
+
+    options_df = options_df.drop(columns=[c for c in cols_to_drop if c in options_df.columns])
+
+    return options_df
+
+
+def fetch_spot(symbol):
+    """Fetch current spot price for the underlying."""
+    ticker = yf.Ticker(symbol)
+    try:
+        spot = ticker.fast_info["last_price"]
+    except Exception:
+        hist = ticker.history(period="1d")
+        spot = float(hist["Close"].iloc[-1])
+    return spot
+
+
+def main():
+    # Choose underlying
+    symbol = "AAPL" # TODO: Here change ticker
+
+    print(f"Symbol: {symbol}")
+
+    # Get spot price
+    spot = fetch_spot(symbol)
+    print(f"\nSpot price: {spot}")
+
+    # Pull full option chain
+    options_df = fetch_option_chain(symbol)
+
+    # Add mid quote and moneyness
+    options_df["mid"] = (options_df["bid"] + options_df["ask"]) / 2
+    options_df["moneyness"] = options_df["strike"] / spot
+
+    # Sort for nice viewing
+    options_df = options_df.sort_values(["expiry", "strike"]).reset_index(drop=True)
+
+    # Show first rows
+    print("\nFirst 5 rows:")
+    print(options_df.head(5))
+
+    # Descriptive stats by expiry: total traded volume, open interest, count of contracts
+    volume_by_expiry = (
+        options_df.groupby("expiry")
+        .agg(
+            total_volume=("volume", "sum"),
+            total_open_interest=("openInterest", "sum"),
+            num_contracts=("contractSymbol", "nunique"),
+        )
+        .reset_index()
+        .sort_values("expiry")
+    )
+
+    print("\nVolume and open interest by expiry:")
+    print(volume_by_expiry)
+
+    # Optional, split by calls and puts as well
+    volume_by_expiry_type = (
+        options_df.groupby(["expiry", "option_type"])
+        .agg(
+            total_volume=("volume", "sum"),
+            total_open_interest=("openInterest", "sum"),
+            num_contracts=("contractSymbol", "nunique"),
+        )
+        .reset_index()
+        .sort_values(["expiry", "option_type"])
+    )
+
+    print("\nVolume and open interest by expiry and option type:")
+    print(volume_by_expiry_type)
+
+
+    # Save full dataset to csv
+    outfile = "optionschain.csv"
+    options_df.to_csv(outfile, index=False)
+    print(f"\nSaved full chain to {outfile}")
+
+
+
+if __name__ == "__main__":
+    main()
