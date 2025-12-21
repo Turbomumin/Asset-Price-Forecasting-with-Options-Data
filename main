@@ -1,89 +1,15 @@
-import yfinance as yf
-import pandas as pd
+from pathlib import Path
+from delta_calc import (
+    bs_delta
+)
 
+from prep_data import (
+    fetch_spot,
+    fetch_option_chain,
+    chain_preprocess
+)
 
-def fetch_option_chain(symbol):
-    """Fetch full option chain for all expiries for one symbol."""
-    ticker = yf.Ticker(symbol)
-    expiries = ticker.options
-
-    all_chains = []
-
-    for exp in expiries:
-        try:
-            chain = ticker.option_chain(exp)
-        except Exception as e:
-            print(f"Failed to load expiry {exp}: {e}")
-            continue
-
-        calls = chain.calls.copy()
-        puts = chain.puts.copy()
-
-        # Attach expiry as datetime
-        calls["expiry"] = pd.to_datetime(exp)
-        puts["expiry"] = pd.to_datetime(exp)
-
-        # Mark option type
-        calls["option_type"] = "C"
-        puts["option_type"] = "P"
-
-        all_chains.append(calls)
-        all_chains.append(puts)
-
-    if not all_chains:
-        raise ValueError("No option chains loaded")
-
-    options_df = pd.concat(all_chains, ignore_index=True)
-
-    # Days to expiry
-    today = pd.Timestamp.today().normalize()
-    options_df["days_to_expiry"] = (options_df["expiry"] - today).dt.days
-
-    # Remove unnecessary columns
-    cols_to_drop = [
-        "contractSize",
-        "currency",
-        "percentChange",
-        "change"
-    ]
-    options_df = options_df.drop(columns=[c for c in cols_to_drop if c in options_df.columns])
-
-    return options_df
-
-def chain_preprocess(options_df):
-    df = options_df.copy()
-
-    print(f"Shape before filtering: {df.shape}")
-
-    # Ensure lastTradeDate is datetime and timezone naive
-    s = pd.to_datetime(df["lastTradeDate"], utc=True, errors="coerce")
-    df["lastTradeDate"] = s.dt.tz_localize(None)
-
-    # Keep only options traded in the last 2 days
-    cutoff = pd.Timestamp.today().normalize() - pd.Timedelta(days=2)
-    df = df[df["lastTradeDate"] >= cutoff]
-
-    print(f"Shape after filtering: {df.shape}")
-
-    options_df = df
-    return df
-
-
-def fetch_spot(symbol):
-    """Fetch current spot price for the underlying."""
-    ticker = yf.Ticker(symbol)
-    try:
-        spot = ticker.fast_info["last_price"]
-    except Exception:
-        hist = ticker.history(period="1d")
-        spot = float(hist["Close"].iloc[-1])
-    return spot
-
-
-def main():
-    print("Starting main function")
-    # Choose underlying
-    symbol = "SPY" # TODO: Here change ticker
+def fetch_and_preprocess(symbol):
 
     print(f"Symbol: {symbol}")
 
@@ -94,35 +20,15 @@ def main():
     # Pull full option chain
     options_df = fetch_option_chain(symbol)
 
-    # Preprocess options chain and remove unnecessary data points
-    options_df = chain_preprocess(options_df)
+    # Preprocess options chain, remove unnecessary data points, and add three new datapoints
+    options_df = chain_preprocess(options_df, spot)
 
-    # Add mid quote and moneyness
-    options_df["mid"] = (options_df["bid"] + options_df["ask"]) / 2
-    options_df["spread"] = (options_df["ask"] - options_df["bid"])
-    options_df["moneyness"] = options_df["strike"] / spot
+    options_df = bs_delta(options_df, spot)
+
+    # ____________________________________________________________________________ TEMPORARY CODE, CAN BE REMOVED UPON FURTHER DEVELOPMENT ____________________________________________________________________________
 
     # Sort for nice viewing
     options_df = options_df.sort_values(["expiry", "strike"]).reset_index(drop=True)
-
-    # Show first rows
-    print("\nFirst 5 rows:")
-    print(options_df.head(5))
-
-    # Descriptive stats by expiry: total traded volume, open interest, count of contracts
-    volume_by_expiry = (
-        options_df.groupby("expiry")
-        .agg(
-            total_volume=("volume", "sum"),
-            total_open_interest=("openInterest", "sum"),
-            num_contracts=("contractSymbol", "nunique"),
-        )
-        .reset_index()
-        .sort_values("expiry")
-    )
-
-    print("\nVolume and open interest by expiry:")
-    print(volume_by_expiry)
 
     # Optional, split by calls and puts as well
     volume_by_expiry_type = (
@@ -139,14 +45,21 @@ def main():
     print("\nVolume and open interest by expiry and option type:")
     print(volume_by_expiry_type)
 
+    print("\nDescriptive statistics of dataset:")
+    print(options_df.describe())
+
 
     # Save full dataset to csv
-    outfile = "optionschain.csv"
+    outfile = "optionschain.csv" #TODO: Change output path here
     options_df.to_csv(outfile, index=False)
     print(f"\nSaved full chain to {outfile}")
 
-
+def main():
+    print("Starting main function")
+    # Choose underlying
+    symbol = "SPY" # TODO: Change ticker here
+    #TODO: Add inputs here, and feed to fetch_and_preprocess
+    fetch_and_preprocess(symbol)
 
 if __name__ == "__main__":
     main()
-
