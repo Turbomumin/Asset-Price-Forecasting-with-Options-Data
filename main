@@ -9,6 +9,10 @@ from prep_data import (
     chain_preprocess
 )
 
+from Visualizer import (
+    expiry_and_strike_graph
+)
+
 def fetch_and_preprocess(symbol):
 
     print(f"Symbol: {symbol}")
@@ -22,6 +26,8 @@ def fetch_and_preprocess(symbol):
 
     # Preprocess options chain, remove unnecessary data points, and add three new datapoints
     options_df = chain_preprocess(options_df, spot)
+
+    expiry_and_strike_graph(options_df, spot)
 
     options_df = bs_delta(options_df, spot)
 
