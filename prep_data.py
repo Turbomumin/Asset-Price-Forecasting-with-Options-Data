@@ -58,19 +58,26 @@ def chain_preprocess(options_df, spot):
     s = pd.to_datetime(df["lastTradeDate"], utc=True, errors="coerce")
     df["lastTradeDate"] = s.dt.tz_localize(None)
 
+    # Add mid quote and moneyness
+    df["spread"] = (df["ask"] - df["bid"])
+
     # Keep only options traded in the last 2 days
-    cutoff = pd.Timestamp.today().normalize() - pd.Timedelta(days=2)
-    df = df[df["lastTradeDate"] >= cutoff]
+    time_cutoff = pd.Timestamp.today().normalize() - pd.Timedelta(days=2)
+    df = df[df["lastTradeDate"] >= time_cutoff]
+
+    # Filter out undesirable values
+    volume_cutoff = 10
+    spread_cutoff = 1.5
+    OI_cutoff = 100
+
+    df = df[df["volume"] >= volume_cutoff]
+    df = df[df["spread"] <= spread_cutoff]
+    df = df[df["openInterest"] >= OI_cutoff]
 
     print(f"Shape after filtering: {df.shape}")
 
-    # Add mid quote and moneyness
-    df["mid"] = (df["bid"] + df["ask"]) / 2
-    df["spread"] = (df["ask"] - df["bid"])
-    df["moneyness"] = df["strike"] / spot
-
     options_df = df
-    return df
+    return options_df
 
 
 def fetch_spot(symbol):
