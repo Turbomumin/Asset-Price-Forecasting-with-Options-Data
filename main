@@ -13,6 +13,10 @@ from Visualizer import (
     expiry_and_strike_graph
 )
 
+from get_interestrate import (
+    run_all_box_rates
+)
+
 def fetch_and_preprocess(symbol):
 
     print(f"Symbol: {symbol}")
@@ -27,9 +31,12 @@ def fetch_and_preprocess(symbol):
     # Preprocess options chain, remove unnecessary data points, and add three new datapoints
     options_df = chain_preprocess(options_df, spot)
 
+    i_rate, i_std = run_all_box_rates(options_df)
+    print(f"Using Mean Interest Rate: {i_rate} with Standard Deviation: {i_std}")
+
     expiry_and_strike_graph(options_df, spot)
 
-    options_df = bs_delta(options_df, spot)
+    options_df = bs_delta(options_df, spot, i_rate)
 
     # ____________________________________________________________________________ TEMPORARY CODE, CAN BE REMOVED UPON FURTHER DEVELOPMENT ____________________________________________________________________________
 
@@ -56,16 +63,22 @@ def fetch_and_preprocess(symbol):
 
 
     # Save full dataset to csv
-    outfile = "optionschain.csv" #TODO: Change output path here
+    outfile = ".../optionschain.csv" #TODO: Change output path here
     options_df.to_csv(outfile, index=False)
     print(f"\nSaved full chain to {outfile}")
 
 def main():
     print("Starting main function")
     # Choose underlying
-    symbol = "SPY" # TODO: Change ticker here
+    symbol = "^SPX" #ODO: Change ticker here
     #TODO: Add inputs here, and feed to fetch_and_preprocess
     fetch_and_preprocess(symbol)
 
 if __name__ == "__main__":
     main()
+
+
+
+# TODO: Ideas
+
+# För att få pris movements mellan t1 och t2, så kan jag ta Black Scholes med time to expiry 1.5 (eller för varje tid mellan t1 och t2), lägga in de i Black Scholes tillsammans med en implied vol som e mellan IV av t1 och IV av t2. Använa implied variance istället för implied vol, så kan jag forecasta stock prices mellan t1 och t2. 
