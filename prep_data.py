@@ -59,6 +59,7 @@ def chain_preprocess(options_df, spot):
     df["lastTradeDate"] = s.dt.tz_localize(None)
 
     # Add mid quote and moneyness
+    df["mid_price"] = (df["ask"] + df["bid"])/2
     df["spread"] = (df["ask"] - df["bid"])
 
     # Keep only options traded in the last 2 days
@@ -67,12 +68,20 @@ def chain_preprocess(options_df, spot):
 
     # Filter out undesirable values
     volume_cutoff = 10
-    spread_cutoff = 1.5
-    OI_cutoff = 100
+    Bid_Ask_Cutoff = 0.01
+    days_cutoff = 0.01
 
     df = df[df["volume"] >= volume_cutoff]
-    df = df[df["spread"] <= spread_cutoff]
-    df = df[df["openInterest"] >= OI_cutoff]
+    print(f"Options with less than {volume_cutoff} volune discarded. New shape is {df.shape}")
+
+    df = df[df["bid"] >= Bid_Ask_Cutoff]
+    print(f"Options with no bid prices discarded. New shape is {df.shape}")
+
+    df = df[df["ask"] >= Bid_Ask_Cutoff]
+    print(f"Options with no ask prices discarded. New shape is {df.shape}")
+
+    df = df[df["days_to_expiry"] >= days_cutoff]
+    print(f"Options expiring today discarded. New shape is {df.shape}")
 
     print(f"Shape after filtering: {df.shape}")
 
