@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import norm
 
-def bs_delta(options_df, spot):
+def bs_delta(options_df, spot, i_rate):
     df = options_df.copy()
 
     # Force spot into Series aligned with df
@@ -11,7 +11,7 @@ def bs_delta(options_df, spot):
     else:
         S = spot.reindex(df.index).astype("float64")
 
-    r = 0.03
+    r = i_rate
     q = 0.0
 
     K = df["strike"].astype(float)
